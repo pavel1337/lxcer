@@ -1,0 +1,30 @@
+backup
++- parse flags
++- load config
++- check restic repos
+
++ if cleanup {
++     - remove local containers
++     - remove local images
++ }
+
++- for h in hosts {
++	- list containers
++	- filter not running containers
++	- for c in containers
++		- remove snapshots
++	- for c in containers
++		- create snapshot
++		- copy snapshot to local as container
++		- publish image out of container
++	 	- export image as .tar
++	 	- remove image
++		- compress .tar to .tar.zst
++	 	- remove .tar
++	 	- for r in repos
++			- send .tar.zst to r
++	 	- remove .tar.zst
+}
+
+restore
+ -

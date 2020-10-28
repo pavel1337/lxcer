@@ -1,0 +1,8 @@
+---
+hosts: [ ]
+blacklist: [ c2, c4 ]
+restic_repos:
+  - path: restic_repos/one
+    password: one
+  - path: restic_repos/two
+    password: two
