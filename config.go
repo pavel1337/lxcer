@@ -15,13 +15,15 @@ type Config struct {
 	Blacklist   []string     `yaml:"blacklist"`
 	ResticRepos []ResticRepo `yaml:"restic_repos"`
 	// TmpFolder   string       `yaml:"tmp_folder"`
-	Cleanup bool
-	Local   bool
+	Cleanup      bool
+	Concurrently bool
+	Local        bool
 }
 
 func loadConfig() *Config {
 	fileName := flag.String("config", "", "Path to YAML config.")
 	cleanup := flag.Bool("cleanup", false, "Delete local containers and images before processing")
+	concurrently := flag.Bool("concurrently", false, "Backup concurrently")
 	local := flag.Bool("local", false, "Backup local containers")
 
 	flag.Parse()
@@ -47,6 +49,7 @@ func loadConfig() *Config {
 
 	c.Cleanup = *cleanup
 	c.Local = *local
+	c.Concurrently = *concurrently
 	// err = createFolder(c.TmpFolder)
 	// if err != nil {
 	// 	log.Fatal(err)

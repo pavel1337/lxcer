@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -24,85 +25,97 @@ func toHosts(strings []string) []Host {
 }
 
 func (h *Host) Backup(config *Config) {
+	log := log.WithField("host", h.Name)
 	err := h.GetContainers()
 	if err != nil {
 		log.Error(err)
 	}
 	cc := filterContainers(h.Containers, config.Blacklist)
 	for _, c := range cc {
+		t := time.Now()
+		log = log.WithField("container", c.Name)
 		if len(c.Snapshots) > 0 {
 			err := c.DeleteSnapshotsRemote(h.Name)
 			if err != nil {
 				log.Error(err)
 				continue
 			}
-			log.Infof("Remote snapshots deleted for %s:%s", h.Name, c.Name)
+			log.WithField("spent", time.Since(t)).Infof("Delete remote snapshots")
 		}
 
-		err = c.CreateSnapshotRemote("ssnet", h.Name)
+		t = time.Now()
+		err = c.CreateSnapshotRemote(sn, h.Name)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Snapshot %s created for %s:%s", "ssnet", h.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Create remote snapshot %s", sn)
 
-		err = c.CopySnapshot("ssnet", h.Name)
+		t = time.Now()
+		err = c.PublishRemote(sn, h.Name)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Snapshot %s copied from %s:%s", "ssnet", h.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Publish remote snapshot %s as image", sn)
 
-		err = c.Publish()
+		t = time.Now()
+		err = c.DeleteSnapshotRemote(sn, h.Name)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Container %s published as image", c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Delete remote snapshot %s", sn)
 
+		t = time.Now()
 		err = c.ExportImage()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Image of container %s exported to %s.tar", c.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Export image as %s.tar", c.Name)
 
+		t = time.Now()
 		err = c.DeleteImage()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Image of container %s delete", c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Delete image")
 
+		t = time.Now()
 		err = c.CompressWithZst()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Exported image of %s compressed to %s.tar.zst", c.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Compress %s.tar to %s.tar.zst", c.Name, c.Name)
 
+		t = time.Now()
 		err = c.DeleteImageTar()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Uncompressed image of %s deleted from %s.tar", c.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Delete %s.tar", c.Name)
 
 		for _, r := range config.ResticRepos {
+			t = time.Now()
 			err := r.Backup(fmt.Sprintf("%s.tar.zst", c.Name))
 			if err != nil {
 				log.Error(err)
 				continue
 			}
-			log.Infof("Compressed %s.tar.zst has been backed up to %s", c.Name, r.Path)
+			log.WithField("spent", time.Since(t)).Infof("Backup %s.tar.zst to %s", c.Name, r.Path)
 		}
 
+		t = time.Now()
 		err = c.DeleteImageTarZst()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Compressed image of %s deleted from %s.tar.zst", c.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Delete %s.tar.zst", c.Name)
 
 	}
 
@@ -126,6 +139,9 @@ func (h *Host) GetContainers() error {
 	if err != nil {
 		return err
 	}
-	h.Containers = cc
+	for _, c := range cc {
+		c.Host = h.Name
+		h.Containers = append(h.Containers, c)
+	}
 	return nil
 }

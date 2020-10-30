@@ -12,6 +12,7 @@ type Container struct {
 	Name       string     `json:"name"`
 	StatusCode int        `json:"status_code"`
 	Snapshots  []Snapshot `json:"snapshots"`
+	Host       string
 }
 
 type Snapshot struct {
@@ -44,7 +45,7 @@ func (c *Container) Delete() error {
 		Stderr bytes.Buffer
 	)
 
-	cmd := exec.Command("lxc", "delete", fmt.Sprintf("%s", c.Name), "--force")
+	cmd := exec.Command("lxc", "delete", "%s", "--force")
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -60,7 +61,7 @@ func (c *Container) DeleteRemote(host string) error {
 		Stderr bytes.Buffer
 	)
 
-	cmd := exec.Command("lxc", "delete", fmt.Sprintf("%s:", host), fmt.Sprintf("%s", c.Name), "--force")
+	cmd := exec.Command("lxc", "delete", fmt.Sprintf("%s:", host), c.Name, "--force")
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -91,8 +92,7 @@ func (c *Container) DeleteSnapshotRemote(sn string, host string) error {
 		Stdout bytes.Buffer
 		Stderr bytes.Buffer
 	)
-
-	cmd := exec.Command("lxc", "delete", fmt.Sprintf("%s:", host), fmt.Sprintf("%s/%s", c.Name, sn))
+	cmd := exec.Command("lxc", "delete", fmt.Sprintf("%s:%s/%s", host, c.Name, sn))
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -132,12 +132,27 @@ func (c *Container) CopySnapshot(sn string, host string) error {
 	return nil
 }
 
+func (c *Container) PublishRemote(sn, host string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+	cmd := exec.Command("lxc", "publish", fmt.Sprintf("%s:%s/%s", host, c.Name, sn), "--alias", c.Name, "--compression", "none", "--force")
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.New(Stderr.String())
+	}
+	return nil
+}
+
 func (c *Container) Publish() error {
 	var (
 		Stdout bytes.Buffer
 		Stderr bytes.Buffer
 	)
-	cmd := exec.Command("lxc", "publish", fmt.Sprintf("%s", c.Name), "--alias", c.Name, "--compression", "none", "--force")
+	cmd := exec.Command("lxc", "publish", c.Name, "--alias", c.Name, "--compression", "none", "--force")
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -152,8 +167,7 @@ func (c *Container) ExportImage() error {
 		Stdout bytes.Buffer
 		Stderr bytes.Buffer
 	)
-	cmd := exec.Command("lxc", "image", "export", fmt.Sprintf("%s", c.Name), fmt.Sprintf("%s", c.Name))
-	fmt.Println(cmd.String())
+	cmd := exec.Command("lxc", "image", "export", c.Name, c.Name)
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -168,7 +182,7 @@ func (c *Container) DeleteImage() error {
 		Stdout bytes.Buffer
 		Stderr bytes.Buffer
 	)
-	cmd := exec.Command("lxc", "image", "delete", fmt.Sprintf("%s", c.Name))
+	cmd := exec.Command("lxc", "image", "delete", c.Name)
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
