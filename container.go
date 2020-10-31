@@ -72,7 +72,7 @@ func (c *Container) DeleteRemote(host string) error {
 		Stderr bytes.Buffer
 	)
 
-	cmd := exec.Command("lxc", "delete", fmt.Sprintf("%s:", host), c.Name, "--force")
+	cmd := exec.Command("lxc", "delete", fmt.Sprintf("%s:", host), c.Name)
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -104,6 +104,21 @@ func (c *Container) DeleteSnapshotRemote(sn string, host string) error {
 		Stderr bytes.Buffer
 	)
 	cmd := exec.Command("lxc", "delete", fmt.Sprintf("%s:%s/%s", host, c.Name, sn))
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.New(Stderr.String())
+	}
+	return nil
+}
+
+func (c *Container) CreateSnapshotLocal(sn string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+	cmd := exec.Command("lxc", "snapshot", fmt.Sprintf("%s", c.Name), sn)
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -148,7 +163,7 @@ func (c *Container) PublishRemote(sn, host string) error {
 		Stdout bytes.Buffer
 		Stderr bytes.Buffer
 	)
-	cmd := exec.Command("lxc", "publish", fmt.Sprintf("%s:%s/%s", host, c.Name, sn), "--alias", c.Name, "--compression", "none", "--force")
+	cmd := exec.Command("lxc", "publish", fmt.Sprintf("%s:%s/%s", host, c.Name, sn), "--alias", c.Name, "--compression", "none")
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -158,12 +173,27 @@ func (c *Container) PublishRemote(sn, host string) error {
 	return nil
 }
 
-func (c *Container) Publish() error {
+func (c *Container) PublishContainer() error {
 	var (
 		Stdout bytes.Buffer
 		Stderr bytes.Buffer
 	)
-	cmd := exec.Command("lxc", "publish", c.Name, "--alias", c.Name, "--compression", "none", "--force")
+	cmd := exec.Command("lxc", "publish", c.Name, "--alias", c.Name, "--compression", "none")
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.New(Stderr.String())
+	}
+	return nil
+}
+
+func (c *Container) PublishSnapshot(sn string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+	cmd := exec.Command("lxc", "publish", fmt.Sprintf("%s/%s", c.Name, sn), "--alias", c.Name, "--compression", "none")
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -209,7 +239,7 @@ func (c *Container) CompressWithZst() error {
 		Stderr bytes.Buffer
 	)
 	// zstd c1.tar --rsyncable -o c1.tar.zst
-	cmd := exec.Command("zstd", fmt.Sprintf("%s.tar", c.Name), "--rsyncable", "-o", fmt.Sprintf("%s.tar.zst", c.Name))
+	cmd := exec.Command("zstd", fmt.Sprintf("%s.tar", c.Name), "-T0", "--rsyncable", "-o", fmt.Sprintf("%s.tar.zst", c.Name))
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
