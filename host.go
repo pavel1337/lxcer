@@ -32,15 +32,16 @@ func (h *Host) Backup(config *Config) {
 	}
 	cc := filterContainers(h.Containers, config.Blacklist)
 	for _, c := range cc {
-		t := time.Now()
 		log = log.WithField("container", c.Name)
-		if len(c.Snapshots) > 0 {
-			err := c.DeleteSnapshotsRemote(h.Name)
+
+		t := time.Now()
+		if c.SnapshotExists(sn) {
+			err := c.DeleteSnapshotRemote(sn, h.Name)
 			if err != nil {
 				log.Error(err)
 				continue
 			}
-			log.WithField("spent", time.Since(t)).Infof("Delete remote snapshots")
+			log.WithField("spent", time.Since(t)).Infof("Delete snapshot")
 		}
 
 		t = time.Now()

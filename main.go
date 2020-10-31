@@ -214,15 +214,19 @@ func handleSnapshots(hh []Host, config *Config) chan Container {
 				cc := filterContainers(h.Containers, config.Blacklist)
 				for _, c := range cc {
 					t := time.Now()
-					log = log.WithField("container", c.Name)
-					if len(c.Snapshots) > 0 {
-						err := c.DeleteSnapshotsRemote(h.Name)
+					log := log.WithFields(log.Fields{
+						"host":      c.Host,
+						"container": c.Name,
+					})
+					if c.SnapshotExists(sn) {
+						err := c.DeleteSnapshotRemote(sn, h.Name)
 						if err != nil {
 							log.Error(err)
 							continue
 						}
-						log.WithField("spent", time.Since(t)).Infof("Delete remote snapshots")
+						log.WithField("spent", time.Since(t)).Infof("Delete snapshot")
 					}
+
 					t = time.Now()
 					err = c.CreateSnapshotRemote(sn, h.Name)
 					if err != nil {
@@ -263,13 +267,20 @@ func localBackup(config *Config) {
 		log.Fatal(err)
 	}
 	for _, c := range filterContainers(cc, config.Blacklist) {
-		if len(c.Snapshots) > 0 {
-			err := c.DeleteSnapshots()
+		log := log.WithFields(log.Fields{
+			"host":      c.Host,
+			"container": c.Name,
+		})
+		t := time.Now()
+
+		if c.SnapshotExists(sn) {
+			err := c.DeleteSnapshot(sn)
 			if err != nil {
 				log.Error(err)
 				continue
 			}
-			log.Infof("Local snapshots deleted for %s", c.Name)
+			log.WithField("spent", time.Since(t)).Infof("Delete snapshot")
+		}
 		}
 
 		err = c.Publish()

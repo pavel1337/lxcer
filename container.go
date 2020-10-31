@@ -39,6 +39,17 @@ func (c *Container) DeleteSnapshotsRemote(host string) error {
 	return nil
 }
 
+func (c *Container) SnapshotExists(sn string) bool {
+	var snn []string
+	for _, s := range c.Snapshots {
+		snn = append(snn, s.Name)
+	}
+	if contains(snn, sn) {
+		return true
+	}
+	return false
+}
+
 func (c *Container) Delete() error {
 	var (
 		Stdout bytes.Buffer
