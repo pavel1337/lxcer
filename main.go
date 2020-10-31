@@ -35,8 +35,17 @@ func main() {
 	}
 
 	if config.Local {
-		localBackup(config)
-		return
+		if config.Concurrently {
+			localBackupsConcurrently(config)
+			return
+		} else {
+			localBackup(config)
+			return
+		}
+	}
+
+	if len(config.Hosts) < 1 {
+		log.Fatal("No hosts in config, nothing to backup")
 	}
 
 	if config.Concurrently {
@@ -80,29 +89,15 @@ func remoteBackupsConcurrently(hh []Host, config *Config) {
 // INFO[0363] Delete kong-mz.tar                            container=kong-mz host=mbuzi spent=113.553161ms
 
 // INFO[0364] Backup kong-mz.tar.zst to restic_repos/one    container=kong-mz host=mbuzi spent=1.204783044s
+
 // INFO[0364] Delete kong-mz.tar.zst                        container=kong-mz host=mbuzi spent=53.12294ms
 
-func backupConcurrently(ch chan Container, config *Config, w int) {
+func deleteTarZst(ch chan Container) {
 	for c := range ch {
 		log := log.WithFields(log.Fields{
 			"host":      c.Host,
 			"container": c.Name,
 		})
-		wg := sync.WaitGroup{}
-		for _, r := range config.ResticRepos {
-			wg.Add(1)
-			go func(r ResticRepo) {
-				defer wg.Done()
-				t := time.Now()
-				err := r.Backup(fmt.Sprintf("%s.tar.zst", c.Name))
-				if err != nil {
-					log.Error(err)
-				}
-				log.WithField("spent", time.Since(t)).Infof("Backup %s.tar.zst to %s", c.Name, r.Path)
-			}(r)
-		}
-
-		wg.Wait()
 		t := time.Now()
 		err := c.DeleteImageTarZst()
 		if err != nil {
@@ -113,8 +108,31 @@ func backupConcurrently(ch chan Container, config *Config, w int) {
 	}
 }
 
+func backupToRepo(ch chan Container, r ResticRepo) chan Container {
+	nextChan := make(chan Container)
+
+	go func(r ResticRepo) {
+		for c := range ch {
+			log := log.WithFields(log.Fields{
+				"host":      c.Host,
+				"container": c.Name,
+			})
+			t := time.Now()
+			err := r.Backup(fmt.Sprintf("%s.tar.zst", c.Name))
+			if err != nil {
+				log.Error(err)
+			}
+			log.WithField("spent", time.Since(t)).Infof("Backup %s.tar.zst to %s", c.Name, r.Path)
+			nextChan <- c
+		}
+		close(nextChan)
+	}(r)
+
+	return nextChan
+}
+
 func handleTars(ch chan Container, w int) chan Container {
-	zstCh := make(chan Container, w)
+	nextChan := make(chan Container, w)
 
 	go func() {
 		wg := sync.WaitGroup{}
@@ -143,19 +161,19 @@ func handleTars(ch chan Container, w int) chan Container {
 						continue
 					}
 					log.WithField("spent", time.Since(t)).Infof("Delete %s.tar", c.Name)
-					zstCh <- c
+					nextChan <- c
 				}
 			}()
 		}
 		wg.Wait()
-		close(zstCh)
+		close(nextChan)
 	}()
 
-	return zstCh
+	return nextChan
 }
 
 func handleImages(ch chan Container, w int) chan Container {
-	tarCh := make(chan Container, w)
+	nextChan := make(chan Container, w)
 
 	go func() {
 		wg := sync.WaitGroup{}
@@ -186,19 +204,19 @@ func handleImages(ch chan Container, w int) chan Container {
 					}
 					log.WithField("spent", time.Since(t)).Infof("Delete image")
 
-					tarCh <- c
+					nextChan <- c
 				}
 			}(ch)
 		}
 
 		wg.Wait()
-		close(tarCh)
+		close(nextChan)
 	}()
 
-	return tarCh
+	return nextChan
 }
 
-func handleSnapshots(hh []Host, config *Config) chan Container {
+func handleSnapshotsRemote(hh []Host, config *Config) chan Container {
 	ch := make(chan Container, len(hh))
 	go func() {
 		wg := sync.WaitGroup{}
@@ -206,7 +224,6 @@ func handleSnapshots(hh []Host, config *Config) chan Container {
 			wg.Add(1)
 			go func(h Host) {
 				defer wg.Done()
-				log := log.WithField("host", h.Name)
 				err := h.GetContainers()
 				if err != nil {
 					log.Error(err)
@@ -261,6 +278,59 @@ func handleSnapshots(hh []Host, config *Config) chan Container {
 	return ch
 }
 
+func handleSnapshotsLocal(config *Config) chan Container {
+	ch := make(chan Container, config.LocalWorkers)
+	go func() {
+		cc, err := listContainersLocal()
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, c := range filterContainers(cc, config.Blacklist) {
+			t := time.Now()
+			log := log.WithFields(log.Fields{
+				"host":      c.Host,
+				"container": c.Name,
+			})
+			if c.SnapshotExists(sn) {
+				err := c.DeleteSnapshot(sn)
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				log.WithField("spent", time.Since(t)).Infof("Delete snapshot")
+			}
+
+			t = time.Now()
+			err = c.CreateSnapshotLocal(sn)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			log.WithField("spent", time.Since(t)).Infof("Create snapshot %s", sn)
+
+			t = time.Now()
+			err = c.PublishSnapshot(sn)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			log.WithField("spent", time.Since(t)).Infof("Publish snapshot as image")
+
+			t = time.Now()
+			err = c.DeleteSnapshot(sn)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			log.WithField("spent", time.Since(t)).Infof("Delete snapshot %s", sn)
+
+			ch <- c
+		}
+		close(ch)
+	}()
+	return ch
+}
+
 func localBackup(config *Config) {
 	cc, err := listContainersLocal()
 	if err != nil {
@@ -281,58 +351,81 @@ func localBackup(config *Config) {
 			}
 			log.WithField("spent", time.Since(t)).Infof("Delete snapshot")
 		}
-		}
 
-		err = c.Publish()
+		t = time.Now()
+
+		err = c.CreateSnapshotLocal(sn)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Container %s published as image", c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Create snapshot %s", sn)
 
+		t = time.Now()
+		err = c.PublishSnapshot(sn)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		log.WithField("spent", time.Since(t)).Infof("Publish snapshot as image")
+
+		t = time.Now()
+		err = c.DeleteSnapshot(sn)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		log.WithField("spent", time.Since(t)).Infof("Delete snapshot %s", sn)
+
+		t = time.Now()
 		err = c.ExportImage()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Image of container %s exported to %s.tar", c.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Export image as %s.tar", c.Name)
 
+		t = time.Now()
 		err = c.DeleteImage()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Image of container %s delete", c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Delete image")
 
+		t = time.Now()
 		err = c.CompressWithZst()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Exported image of %s compressed to %s.tar.zst", c.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Compress %s.tar to %s.tar.zst", c.Name, c.Name)
 
+		t = time.Now()
 		err = c.DeleteImageTar()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Uncompressed image of %s deleted from %s.tar", c.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Delete %s.tar", c.Name)
 
 		for _, r := range config.ResticRepos {
+			t = time.Now()
 			err := r.Backup(fmt.Sprintf("%s.tar.zst", c.Name))
 			if err != nil {
 				log.Error(err)
 				continue
 			}
-			log.Infof("Compressed %s.tar.zst has been backed up to %s", c.Name, r.Path)
+			log.WithField("spent", time.Since(t)).Infof("Backup %s.tar.zst to %s", c.Name, r.Path)
 		}
 
+		t = time.Now()
 		err = c.DeleteImageTarZst()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		log.Infof("Compressed image of %s deleted from %s.tar.zst", c.Name, c.Name)
+		log.WithField("spent", time.Since(t)).Infof("Delete %s.tar.zst", c.Name)
 
 	}
 
@@ -385,7 +478,12 @@ func listContainersLocal() ([]Container, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cc, nil
+	var rcc []Container
+	for _, c := range cc {
+		c.Host = "local"
+		rcc = append(rcc, c)
+	}
+	return rcc, nil
 }
 
 func listImagesLocal() ([]Image, error) {
