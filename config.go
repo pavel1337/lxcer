@@ -11,9 +11,10 @@ import (
 )
 
 type Config struct {
-	Hosts       []string     `yaml:"hosts"`
-	Blacklist   []string     `yaml:"blacklist"`
-	ResticRepos []ResticRepo `yaml:"restic_repos"`
+	Hosts        []string     `yaml:"hosts"`
+	Blacklist    []string     `yaml:"blacklist"`
+	ResticRepos  []ResticRepo `yaml:"restic_repos"`
+	LocalWorkers int          `yaml:"local_workers"`
 	// TmpFolder   string       `yaml:"tmp_folder"`
 	Cleanup      bool
 	Concurrently bool

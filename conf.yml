@@ -1,6 +1,7 @@
 ---
 hosts: [ ]
-blacklist: [ c2, c4 ]
+blacklist: [ ]
+local_workers: 1
 restic_repos:
   - path: restic_repos/one
     password: one

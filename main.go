@@ -49,11 +49,24 @@ func main() {
 	}
 }
 
+func localBackupsConcurrently(config *Config) {
+	ch := handleSnapshotsLocal(config)
+	ch = handleImages(ch, config.LocalWorkers)
+	ch = handleTars(ch, config.LocalWorkers)
+	for _, r := range config.ResticRepos {
+		ch = backupToRepo(ch, r)
+	}
+	deleteTarZst(ch)
+}
+
 func remoteBackupsConcurrently(hh []Host, config *Config) {
-	imgCh := handleSnapshots(hh, config)
-	tarCh := handleImages(imgCh, 2)
-	zstCh := handleTars(tarCh, 2)
-	backupConcurrently(zstCh, config, 1)
+	ch := handleSnapshotsRemote(hh, config)
+	ch = handleImages(ch, config.LocalWorkers)
+	ch = handleTars(ch, config.LocalWorkers)
+	for _, r := range config.ResticRepos {
+		ch = backupToRepo(ch, r)
+	}
+	deleteTarZst(ch)
 }
 
 // INFO[0334] Create remote snapshot ssnet                  container=kong-mz host=mbuzi spent=1.705760833s
