@@ -19,7 +19,7 @@ var (
 
 func init() {
 	log.SetFormatter(&log.TextFormatter{
-		// DisableColors: true,
+		DisableColors: true,
 	})
 }
 
