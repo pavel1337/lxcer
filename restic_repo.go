@@ -47,6 +47,7 @@ func (r *ResticRepo) Backup(path string) error {
 
 func (r *ResticRepo) setEnv() []string {
 	var envs []string
+	envs = append(envs, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 	envs = append(envs, fmt.Sprintf("RESTIC_REPOSITORY=%s", r.Path))
 	envs = append(envs, fmt.Sprintf("RESTIC_PASSWORD=%s", r.Password))
 	return envs
