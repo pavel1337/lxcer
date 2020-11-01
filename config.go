@@ -33,6 +33,7 @@ type RestoreContainer struct {
 type contList map[string]string
 
 var (
+	logLevel           = flag.String("log-level", "error", "Remote host name to restore containers to")
 	remoteHost         = flag.String("remote-host", "", "Remote host name to restore containers to")
 	restoreContainerAs = flag.String("as", "", "Restore-name of the container")
 	restoreContainer   = flag.String("container", "", "Name of the container to restore")
@@ -48,6 +49,12 @@ func init() {
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors: true,
 	})
+	lv, err := log.ParseLevel(*logLevel)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.SetLevel(lv)
+
 }
 
 func loadConfig() *Config {

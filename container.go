@@ -263,12 +263,42 @@ func ImportImage(path, as string) error {
 	return nil
 }
 
+func ImportImageRemote(path, as, rhost string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+	cmd := exec.Command("lxc", "image", "import", path, fmt.Sprintf("%s:", rhost), "--alias", as)
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.New(Stderr.String())
+	}
+	return nil
+}
+
 func DeleteImage(cname string) error {
 	var (
 		Stdout bytes.Buffer
 		Stderr bytes.Buffer
 	)
 	cmd := exec.Command("lxc", "image", "delete", cname)
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.New(Stderr.String())
+	}
+	return nil
+}
+
+func DeleteImageRemote(cname, rhost string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+	cmd := exec.Command("lxc", "image", "delete", fmt.Sprintf("%s:%s", rhost, cname))
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
