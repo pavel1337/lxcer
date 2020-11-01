@@ -77,7 +77,7 @@ func (h *Host) Backup(config *Config) {
 		log.WithField("spent", time.Since(t)).Infof("Export image as %s.tar", c.Name)
 
 		t = time.Now()
-		err = c.DeleteImage()
+		err = DeleteImage(c.Name)
 		if err != nil {
 			log.Error(err)
 			continue
@@ -93,14 +93,14 @@ func (h *Host) Backup(config *Config) {
 		log.WithField("spent", time.Since(t)).Infof("Compress %s.tar to %s.tar.zst", c.Name, c.Name)
 
 		t = time.Now()
-		err = c.DeleteImageTar()
+		err = DeleteImageTar(c.Name)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
 		log.WithField("spent", time.Since(t)).Infof("Delete %s.tar", c.Name)
 
-		for _, r := range config.ResticRepos {
+		for _, r := range config.BackupResticRepos {
 			t = time.Now()
 			err := r.Backup(fmt.Sprintf("%s.tar.zst", c.Name))
 			if err != nil {
@@ -111,7 +111,7 @@ func (h *Host) Backup(config *Config) {
 		}
 
 		t = time.Now()
-		err = c.DeleteImageTarZst()
+		err = DeleteImageTarZst(c.Name)
 		if err != nil {
 			log.Error(err)
 			continue

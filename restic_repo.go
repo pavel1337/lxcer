@@ -46,6 +46,27 @@ func (r *ResticRepo) Backup(path string) error {
 	return nil
 }
 
+// restic restore latest --path cachet-mz.tar.zst --target .
+func (r *ResticRepo) Restore(cname string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+
+	zst := fmt.Sprintf("%s.tar.zst", cname)
+
+	cmd := exec.Command("restic", "restore", "latest", "--path", zst, "--target", ".")
+
+	cmd.Env = r.setEnv()
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (r *ResticRepo) setEnv() []string {
 	var envs []string
 	envs = append(envs, os.Environ()...)

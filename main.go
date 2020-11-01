@@ -26,16 +26,29 @@ func init() {
 func main() {
 	config := loadConfig()
 
-	for _, r := range config.ResticRepos {
+	switch config.ActionType {
+	case "backup":
+		Backup(config)
+		return
+	case "restore":
+		Restore(config)
+		return
+	default:
+		log.Fatalln("Please provide action type with -a flag (backup or restore)")
+	}
+}
+
+func Backup(config *Config) {
+	for _, r := range config.BackupResticRepos {
 		r.Check()
 	}
 
 	if config.Cleanup {
-		cleanup()
+		cleanupLocal()
 	}
 
 	if config.Local {
-		if config.Concurrently {
+		if *concurrently {
 			localBackupsConcurrently(config)
 			return
 		} else {
@@ -48,7 +61,7 @@ func main() {
 		log.Fatal("No hosts in config, nothing to backup")
 	}
 
-	if config.Concurrently {
+	if *concurrently {
 		remoteBackupsConcurrently(toHosts(config.Hosts), config)
 		return
 	}
@@ -56,13 +69,231 @@ func main() {
 	for _, h := range toHosts(config.Hosts) {
 		h.Backup(config)
 	}
+
 }
+
+func Restore(config *Config) {
+	if !config.Local && *remoteHost == "" {
+		log.Fatalln("Please set -remote-host or -local flag to restore")
+	}
+
+	config.RestoreResticRepo.Check()
+
+	if config.Cleanup {
+		cleanupLocal()
+	}
+
+	if *restoreContainer != "" && *restoreContainerAs != "" {
+		restoreOne(config, *restoreContainer, *restoreContainerAs)
+		return
+	}
+
+	if *restoreList != "" {
+		if *concurrently {
+			restoreConcurrently(config)
+			return
+		} else {
+			for k, v := range config.ContList {
+				restoreOne(config, k, v)
+			}
+			return
+		}
+	}
+
+}
+
+func restoreOne(config *Config, container, restoreAs string) {
+	log := log.WithField("container", container)
+	if config.Local {
+		log = log.WithField("host", "local")
+	} else {
+		log = log.WithField("host", *remoteHost)
+	}
+
+	t := time.Now()
+	err := config.RestoreResticRepo.Restore(container)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.WithField("spent", time.Since(t)).Info("Restore .tar.zst from restic")
+
+	t = time.Now()
+	err = DecompressWithZst(container)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.WithField("spent", time.Since(t)).Info("Decompress .tar.zst to .tar")
+
+	t = time.Now()
+	err = DeleteImageTarZst(container)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.WithField("spent", time.Since(t)).Info("Delete .tar.zst")
+
+	t = time.Now()
+	err = ImportImage(fmt.Sprintf("%s.tar", container), restoreAs)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.WithField("spent", time.Since(t)).Info("Import LXC image from .tar")
+
+	t = time.Now()
+	err = DeleteImageTar(container)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.WithField("spent", time.Since(t)).Info("Delete .tar")
+
+	t = time.Now()
+	if config.Local {
+		err = StartContainerFromImageLocal(restoreAs)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		log.WithField("spent", time.Since(t)).Info("Start local container")
+
+	} else {
+		err = StartContainerFromImageRemote(restoreAs, *remoteHost)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		log.WithField("spent", time.Since(t)).Info("Start remote container")
+
+	}
+
+	t = time.Now()
+	err = DeleteImage(restoreAs)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.WithField("spent", time.Since(t)).Info("Delete image")
+
+}
+
+func restoreConcurrently(config *Config) {
+	ch := restoreDecompressImport(config)
+	restoreStart(config, ch)
+}
+
+func restoreDecompressImport(config *Config) chan RestoreContainer {
+	ch := make(chan RestoreContainer)
+	go func() {
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for container, restoreAs := range config.ContList {
+				log := log.WithField("container", container)
+				if config.Local {
+					log = log.WithField("host", "local")
+				} else {
+					log = log.WithField("host", *remoteHost)
+				}
+
+				t := time.Now()
+				err := config.RestoreResticRepo.Restore(container)
+				if err != nil {
+					log.Errorln(err)
+					continue
+				}
+				log.WithField("spent", time.Since(t)).Info("Restore .tar.zst from restic")
+
+				t = time.Now()
+				err = DecompressWithZst(container)
+				if err != nil {
+					log.Errorln(err)
+					continue
+				}
+				log.WithField("spent", time.Since(t)).Info("Decompress .tar.zst to .tar")
+
+				t = time.Now()
+				err = DeleteImageTarZst(container)
+				if err != nil {
+					log.Errorln(err)
+					continue
+				}
+				log.WithField("spent", time.Since(t)).Info("Delete .tar.zst")
+
+				t = time.Now()
+				err = ImportImage(fmt.Sprintf("%s.tar", container), restoreAs)
+				if err != nil {
+					log.Errorln(err)
+					continue
+				}
+				log.WithField("spent", time.Since(t)).Info("Import LXC image from .tar")
+
+				t = time.Now()
+				err = DeleteImageTar(container)
+				if err != nil {
+					log.Errorln(err)
+					continue
+				}
+				log.WithField("spent", time.Since(t)).Info("Delete .tar")
+				var rc RestoreContainer
+				rc.Name = container
+				rc.RestoreName = restoreAs
+				ch <- rc
+			}
+		}()
+		wg.Wait()
+		close(ch)
+
+	}()
+	return ch
+}
+
+func restoreStart(config *Config, ch chan RestoreContainer) {
+	for rc := range ch {
+		var err error
+		log := log.WithField("container", rc.RestoreName)
+		if config.Local {
+			log = log.WithField("host", "local")
+		} else {
+			log = log.WithField("host", *remoteHost)
+		}
+
+		t := time.Now()
+		if config.Local {
+			err = StartContainerFromImageLocal(rc.RestoreName)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			log.WithField("spent", time.Since(t)).Info("Start local container")
+
+		} else {
+			err = StartContainerFromImageRemote(rc.RestoreName, *remoteHost)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			log.WithField("spent", time.Since(t)).Info("Start remote container")
+
+		}
+
+		t = time.Now()
+		err = DeleteImage(rc.RestoreName)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		log.WithField("spent", time.Since(t)).Info("Delete image")
+
+	}
+}
+
+// msg="Restore .tar.zst from restic" container=haproxy-mz host=nyani spent=28.297150158s
+// msg="Decompress .tar.zst to .tar" container=haproxy-mz host=nyani spent=1.329843911s
+// msg="Delete .tar.zst" container=haproxy-mz host=nyani spent=33.768074ms
+// msg="Import LXC image from .tar" container=haproxy-mz host=nyani spent=2.515006647s
+// msg="Delete .tar" container=haproxy-mz host=nyani spent=115.100713ms
+
+// msg="Start remote container" container=haproxy-mz host=nyani spent=50.547018289s
+// msg="Delete image" container=haproxy-mz host=nyani spent=201.585483ms
 
 func localBackupsConcurrently(config *Config) {
 	ch := handleSnapshotsLocal(config)
 	ch = handleImages(ch, config.LocalWorkers)
 	ch = handleTars(ch, config.LocalWorkers)
-	for _, r := range config.ResticRepos {
+	for _, r := range config.BackupResticRepos {
 		ch = backupToRepo(ch, r)
 	}
 	deleteTarZst(ch)
@@ -72,25 +303,11 @@ func remoteBackupsConcurrently(hh []Host, config *Config) {
 	ch := handleSnapshotsRemote(hh, config)
 	ch = handleImages(ch, config.LocalWorkers)
 	ch = handleTars(ch, config.LocalWorkers)
-	for _, r := range config.ResticRepos {
+	for _, r := range config.BackupResticRepos {
 		ch = backupToRepo(ch, r)
 	}
 	deleteTarZst(ch)
 }
-
-// INFO[0334] Create remote snapshot ssnet                  container=kong-mz host=mbuzi spent=1.705760833s
-// INFO[0356] Publish remote snapshot ssnet as image        container=kong-mz host=mbuzi spent=21.809066878s
-// INFO[0357] Delete remote snapshot ssnet                  container=kong-mz host=mbuzi spent=1.095481593s
-
-// INFO[0359] Export image as kong-mz.tar                   container=kong-mz host=mbuzi spent=2.551460824s
-// INFO[0359] Delete image%!(EXTRA string=kong-mz)          container=kong-mz host=mbuzi spent=153.95267ms
-
-// INFO[0362] Compress kong-mz.tar to kong-mz.tar.zst       container=kong-mz host=mbuzi spent=3.112826626s
-// INFO[0363] Delete kong-mz.tar                            container=kong-mz host=mbuzi spent=113.553161ms
-
-// INFO[0364] Backup kong-mz.tar.zst to restic_repos/one    container=kong-mz host=mbuzi spent=1.204783044s
-
-// INFO[0364] Delete kong-mz.tar.zst                        container=kong-mz host=mbuzi spent=53.12294ms
 
 func deleteTarZst(ch chan Container) {
 	for c := range ch {
@@ -99,7 +316,7 @@ func deleteTarZst(ch chan Container) {
 			"container": c.Name,
 		})
 		t := time.Now()
-		err := c.DeleteImageTarZst()
+		err := DeleteImageTarZst(c.Name)
 		if err != nil {
 			log.Error(err)
 			continue
@@ -155,7 +372,7 @@ func handleTars(ch chan Container, w int) chan Container {
 					log.WithField("spent", time.Since(t)).Infof("Compress %s.tar to %s.tar.zst", c.Name, c.Name)
 
 					t = time.Now()
-					err = c.DeleteImageTar()
+					err = DeleteImageTar(c.Name)
 					if err != nil {
 						log.Error(err)
 						continue
@@ -197,7 +414,7 @@ func handleImages(ch chan Container, w int) chan Container {
 					log.WithField("spent", time.Since(t)).Infof("Export image as %s.tar", c.Name)
 
 					t = time.Now()
-					err = c.DeleteImage()
+					err = DeleteImage(c.Name)
 					if err != nil {
 						log.Error(err)
 						continue
@@ -386,7 +603,7 @@ func localBackup(config *Config) {
 		log.WithField("spent", time.Since(t)).Infof("Export image as %s.tar", c.Name)
 
 		t = time.Now()
-		err = c.DeleteImage()
+		err = DeleteImage(c.Name)
 		if err != nil {
 			log.Error(err)
 			continue
@@ -402,14 +619,14 @@ func localBackup(config *Config) {
 		log.WithField("spent", time.Since(t)).Infof("Compress %s.tar to %s.tar.zst", c.Name, c.Name)
 
 		t = time.Now()
-		err = c.DeleteImageTar()
+		err = DeleteImageTar(c.Name)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
 		log.WithField("spent", time.Since(t)).Infof("Delete %s.tar", c.Name)
 
-		for _, r := range config.ResticRepos {
+		for _, r := range config.BackupResticRepos {
 			t = time.Now()
 			err := r.Backup(fmt.Sprintf("%s.tar.zst", c.Name))
 			if err != nil {
@@ -420,7 +637,7 @@ func localBackup(config *Config) {
 		}
 
 		t = time.Now()
-		err = c.DeleteImageTarZst()
+		err = DeleteImageTarZst(c.Name)
 		if err != nil {
 			log.Error(err)
 			continue
@@ -431,7 +648,7 @@ func localBackup(config *Config) {
 
 }
 
-func cleanup() {
+func cleanupLocal() {
 	cc, err := listContainersLocal()
 	if err != nil {
 		log.Fatal(err)

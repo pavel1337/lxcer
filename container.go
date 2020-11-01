@@ -218,12 +218,73 @@ func (c *Container) ExportImage() error {
 	return nil
 }
 
-func (c *Container) DeleteImage() error {
+func StartContainerFromImageLocal(cname string) error {
 	var (
 		Stdout bytes.Buffer
 		Stderr bytes.Buffer
 	)
-	cmd := exec.Command("lxc", "image", "delete", c.Name)
+	cmd := exec.Command("lxc", "launch", cname, cname)
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.New(Stderr.String())
+	}
+	return nil
+}
+
+func StartContainerFromImageRemote(cname, rhost string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+	cmd := exec.Command("lxc", "launch", cname, fmt.Sprintf("%s:%s", rhost, cname))
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.New(Stderr.String())
+	}
+	return nil
+}
+
+func ImportImage(path, as string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+	cmd := exec.Command("lxc", "image", "import", path, "--alias", as)
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.New(Stderr.String())
+	}
+	return nil
+}
+
+func DeleteImage(cname string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+	cmd := exec.Command("lxc", "image", "delete", cname)
+	cmd.Stdout = &Stdout
+	cmd.Stderr = &Stderr
+	err := cmd.Run()
+	if err != nil {
+		return errors.New(Stderr.String())
+	}
+	return nil
+}
+
+func DecompressWithZst(cname string) error {
+	var (
+		Stdout bytes.Buffer
+		Stderr bytes.Buffer
+	)
+	// zstd -d -T0 cachet-mz.tar.zst -o cachet-mz.tar
+	cmd := exec.Command("zstd", "-d", "-T0", fmt.Sprintf("%s.tar.zst", cname), "-o", fmt.Sprintf("%s.tar", cname))
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()
@@ -249,10 +310,10 @@ func (c *Container) CompressWithZst() error {
 	return nil
 }
 
-func (c *Container) DeleteImageTar() error {
-	return os.Remove(fmt.Sprintf("%s.tar", c.Name)) // remove a single file
+func DeleteImageTar(cname string) error {
+	return os.Remove(fmt.Sprintf("%s.tar", cname)) // remove a single file
 }
 
-func (c *Container) DeleteImageTarZst() error {
-	return os.Remove(fmt.Sprintf("%s.tar.zst", c.Name)) // remove a single file
+func DeleteImageTarZst(cname string) error {
+	return os.Remove(fmt.Sprintf("%s.tar.zst", cname)) // remove a single file
 }
