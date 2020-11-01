@@ -1,9 +1,17 @@
 ---
+# backup containers from these remote LXC hosts
 hosts: [ ]
+# ignore containers that a listed here:
 blacklist: [ ]
+# number of workers which do image export and compression
 local_workers: 1
-restic_repos:
+# as many as you like
+backup_restic_repos:
   - path: restic_repos/one
     password: one
   - path: restic_repos/two
     password: two
+# only one
+restore_restic_repo:
+  path: restic_repos/one
+  password: one
