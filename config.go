@@ -21,18 +21,39 @@ type Config struct {
 	Local        bool
 }
 
-func loadConfig() *Config {
-	fileName := flag.String("config", "", "Path to YAML config.")
-	cleanup := flag.Bool("cleanup", false, "Delete local containers and images before processing")
-	concurrently := flag.Bool("concurrently", false, "Backup concurrently")
-	local := flag.Bool("local", false, "Backup local containers")
+var (
+	fileName     = flag.String("config", "", "Path to YAML config.")
+	cleanup      = flag.Bool("cleanup", false, "Delete local containers and images before processing")
+	concurrently = flag.Bool("concurrently", false, "Backup concurrently")
+	local        = flag.Bool("local", false, "Backup local containers")
+)
 
+func init() {
+	log.SetFormatter(&log.TextFormatter{
+		DisableColors: true,
+	})
+}
+
+func loadConfig() *Config {
 	flag.Parse()
 
 	if *fileName == "" {
 		log.Fatalf(`Please provide path to yaml config file by using "-config" flag`)
 	}
 
+	c := readConfig(*fileName)
+	c.Cleanup = *cleanup
+	c.Local = *local
+	c.Concurrently = *concurrently
+
+	return &c
+}
+
+func createFolder(path string) error {
+	return os.MkdirAll(path, 775)
+}
+
+func readConfig(path string) Config {
 	yamlFile, err := ioutil.ReadFile(*fileName)
 	if err != nil {
 		log.Fatalf("Error reading YAML file: %s", err)
@@ -44,20 +65,5 @@ func loadConfig() *Config {
 		log.Fatalf("Error parsing YAML file: %s", err)
 	}
 
-	// if c.TmpFolder == "" {
-	// 	log.Fatalf(`Please provide "tmp_folder" in config`)
-	// }
-
-	c.Cleanup = *cleanup
-	c.Local = *local
-	c.Concurrently = *concurrently
-	// err = createFolder(c.TmpFolder)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	return &c
-}
-
-func createFolder(path string) error {
-	return os.MkdirAll(path, 775)
+	return c
 }
