@@ -49,16 +49,16 @@ func init() {
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors: true,
 	})
+}
+
+func loadConfig() *Config {
+	flag.Parse()
+
 	lv, err := log.ParseLevel(*logLevel)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	log.SetLevel(lv)
-
-}
-
-func loadConfig() *Config {
-	flag.Parse()
 
 	if *fileName == "" {
 		log.Fatalf(`Please provide path to yaml config file by using -config flag`)
@@ -84,10 +84,6 @@ func loadConfig() *Config {
 	c.Concurrently = *concurrently
 
 	return &c
-}
-
-func createFolder(path string) error {
-	return os.MkdirAll(path, 775)
 }
 
 func readConfig(path string) Config {

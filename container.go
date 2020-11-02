@@ -238,7 +238,7 @@ func StartContainerFromImageRemote(cname, rhost string) error {
 		Stdout bytes.Buffer
 		Stderr bytes.Buffer
 	)
-	cmd := exec.Command("lxc", "launch", cname, fmt.Sprintf("%s:%s", rhost, cname))
+	cmd := exec.Command("lxc", "launch", fmt.Sprintf("%s:%s", rhost, cname), fmt.Sprintf("%s:%s", rhost, cname))
 	cmd.Stdout = &Stdout
 	cmd.Stderr = &Stderr
 	err := cmd.Run()

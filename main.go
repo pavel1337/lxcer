@@ -234,14 +234,16 @@ func restoreDecompressImport(config *Config) chan RestoreContainer {
 				if config.Local {
 					err = ImportImage(fmt.Sprintf("%s.tar", container), restoreAs)
 					if err != nil {
-						log.Fatalln(err)
+						log.Errorln(err)
+						continue
 					}
 					log.WithField("spent", time.Since(t)).Info("Import to local LXC image from .tar")
 
 				} else {
 					err = ImportImageRemote(fmt.Sprintf("%s.tar", container), restoreAs, *remoteHost)
 					if err != nil {
-						log.Fatalln(err)
+						log.Errorln(err)
+						continue
 					}
 					log.WithField("spent", time.Since(t)).Info("Import to remote LXC image from .tar")
 				}
@@ -280,28 +282,32 @@ func restoreStart(config *Config, ch chan RestoreContainer) {
 		if config.Local {
 			err = StartContainerFromImageLocal(rc.RestoreName)
 			if err != nil {
-				log.Fatalln(err)
+				log.Errorln(err)
+				continue
 			}
 			log.WithField("spent", time.Since(t)).Info("Start local container")
 
 			t = time.Now()
 			err = DeleteImage(rc.RestoreName)
 			if err != nil {
-				log.Fatalln(err)
+				log.Errorln(err)
+				continue
 			}
 			log.WithField("spent", time.Since(t)).Info("Delete local image")
 
 		} else {
 			err = StartContainerFromImageRemote(rc.RestoreName, *remoteHost)
 			if err != nil {
-				log.Fatalln(err)
+				log.Errorln(err)
+				continue
 			}
 			log.WithField("spent", time.Since(t)).Info("Start remote container")
 
 			t = time.Now()
 			err = DeleteImageRemote(rc.RestoreName, *remoteHost)
 			if err != nil {
-				log.Fatalln(err)
+				log.Errorln(err)
+				continue
 			}
 			log.WithField("spent", time.Since(t)).Info("Delete remote image")
 
