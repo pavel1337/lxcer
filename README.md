@@ -26,9 +26,21 @@ Follows logic below:
 
 If run concurrently, then for each remote host starts its own goroutine which creates and publishes snapshots. Then passes image to next goroutine which exports it, then passes to next one which compresses it and passes it further to goroutines that push compressed archives to restic repos. 
 
+##### Examples
+Backup all containers from all hosts listed in `/etc/lxc/config.yml` concurrently with only errors as output (if any)
+
+`lxcer -a backup --config /etc/lxcer/config.yml --concurrently`
+
+
 #### Restore
 Follows logic below: 
 1. Download latest snapshot for container
 2. Decompress it from .tar.zst to .tar
 3. Import .tar as (remote) image
 4. Start (remote) container from (remote) image.
+
+##### Examples
+Restore single container with name `app-01` as container `app-02` on remote host with name `rhost-01` with log info printed in terminal.
+
+`lxcer -config conf.yml -a restore -container app-01 --as app-02 -remote-host rhost-01 --log-level info`
+
