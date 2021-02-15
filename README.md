@@ -44,3 +44,13 @@ Restore single container with name `app-01` as container `app-02` on remote host
 
 `lxcer -config conf.yml -a restore -container app-01 --as app-02 -remote-host rhost-01 --log-level info`
 
+Restore a list of containers on remote host `rhost-01` with log info printed in terminal.
+
+`lxcer -config conf.yml -a restore -restore-list restore.lst -remote-host rhost-01 -concurrently`
+
+The restore.lst should be in the format below: 
+
+```
+container_to_restore:name_of_restored_container
+```
+So the command above will restore the container `container_to_restore` as `name_of_restored_container` on remote host `rhost-01`
