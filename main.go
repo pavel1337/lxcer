@@ -39,9 +39,10 @@ func main() {
 }
 
 func Backup(config *Config) {
-	for _, r := range config.BackupResticRepos {
-		r.Check()
-	}
+	// Disabled checks before backups as it takes ages
+	// for _, r := range config.BackupResticRepos {
+	// 	r.Check()
+	// }
 
 	if config.Cleanup {
 		cleanupLocal()
@@ -77,7 +78,8 @@ func Restore(config *Config) {
 		log.Fatalln("Please set -remote-host or -local flag to restore")
 	}
 
-	config.RestoreResticRepo.Check()
+	// Disabled checks before backups as it takes ages
+	// config.RestoreResticRepo.Check()
 
 	if config.Cleanup {
 		cleanupLocal()
