@@ -58,6 +58,12 @@ func Backup(config *Config) {
 		}
 	}
 
+	if *flagContainer != "" && *remoteHost != "" {
+		h := toHost(*remoteHost)
+		h.BackupOne(config, *flagContainer)
+		return
+	}
+
 	if len(config.Hosts) < 1 {
 		log.Fatal("No hosts in config, nothing to backup")
 	}
