@@ -85,8 +85,8 @@ func Restore(config *Config) {
 		cleanupLocal()
 	}
 
-	if *restoreContainer != "" && *restoreContainerAs != "" {
-		restoreOne(config, *restoreContainer, *restoreContainerAs)
+	if *flagContainer != "" && *restoreContainerAs != "" {
+		restoreOne(config, *flagContainer, *restoreContainerAs)
 		return
 	}
 
