@@ -64,16 +64,23 @@ func Backup(config *Config) {
 		return
 	}
 
-	if len(config.Hosts) < 1 {
+	var hosts = toHosts(config.Hosts)
+
+	if *remoteHost != "" {
+		h := toHost(*remoteHost)
+		hosts = []Host{h}
+	}
+
+	if len(hosts) < 1 {
 		log.Fatal("No hosts in config, nothing to backup")
 	}
 
 	if *concurrently {
-		remoteBackupsConcurrently(toHosts(config.Hosts), config)
+		remoteBackupsConcurrently(hosts, config)
 		return
 	}
 
-	for _, h := range toHosts(config.Hosts) {
+	for _, h := range hosts {
 		h.Backup(config)
 	}
 
