@@ -47,7 +47,7 @@ func (h *Host) Backup(config *Config) {
 				log.Error(err)
 				continue
 			}
-			log.WithField("spent", time.Since(t)).Infof("Delete snapshot")
+			log.WithField("spent", time.Since(t)).Infof("Delete remote snapshot %s", sn)
 		}
 
 		t = time.Now()
