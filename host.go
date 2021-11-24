@@ -19,9 +19,15 @@ type Host struct {
 func toHosts(strings []string) []Host {
 	var hh []Host
 	for _, s := range strings {
-		hh = append(hh, Host{Name: s})
+		hh = append(hh, toHost(s))
 	}
 	return hh
+}
+
+func toHost(string string) Host {
+	return Host{
+		Name: string,
+	}
 }
 
 func (h *Host) Backup(config *Config) {
@@ -145,4 +151,13 @@ func (h *Host) GetContainers() error {
 		h.Containers = append(h.Containers, c)
 	}
 	return nil
+}
+
+func containerExists(cc []Container, name string) bool {
+	for _, c := range cc {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
 }
